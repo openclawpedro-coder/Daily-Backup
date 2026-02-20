@@ -1,0 +1,5 @@
+*.log
+.env
+aws-credentials
+test-restore/
+*.tar.gz
