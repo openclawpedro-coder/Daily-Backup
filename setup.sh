@@ -1,100 +1,79 @@
 #!/bin/bash
 #
-# Setup script for OpenClaw Daily Backup
-# Run this once to configure AWS credentials and verify the setup
+# Setup script for Hybrid Backup (GitHub + Local Archives)
 #
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ARCHIVE_DIR="$SCRIPT_DIR/archives"
 
-echo "=== OpenClaw Daily Backup Setup ==="
+echo "=== Hybrid Backup Setup ==="
 echo
 
-# Check for AWS CLI
-if ! command -v aws &> /dev/null; then
-    echo "[ERROR] AWS CLI not found. Install it first:"
-    echo "  sudo apt-get update && sudo apt-get install -y awscli"
-    exit 1
-fi
-echo "[OK] AWS CLI found"
+# Create archive directory
+mkdir -p "$ARCHIVE_DIR"
+echo "[OK] Archive directory: $ARCHIVE_DIR"
 
-# Check AWS credentials
+# Check git config
 echo
-echo "Checking AWS credentials..."
-if ! aws sts get-caller-identity &> /dev/null; then
-    echo "[WARN] AWS credentials not configured"
-    echo
-    echo "To configure AWS credentials, run:"
-    echo "  aws configure"
-    echo
-    echo "You'll need:"
-    echo "  - AWS Access Key ID"
-    echo "  - AWS Secret Access Key"
-    echo "  - Default region (e.g., us-east-1, eu-west-1)"
-    exit 1
+echo "Checking Git configuration..."
+cd "$SCRIPT_DIR"
+
+if ! git config user.email &>/dev/null; then
+    echo "Enter email for backup commits (e.g., backup@openclaw.local):"
+    read -r email
+    git config user.email "${email:-backup@openclaw.local}"
 fi
 
-ACCOUNT=$(aws sts get-caller-identity --query 'Account' --output text)
-echo "[OK] AWS credentials configured (Account: $ACCOUNT)"
-
-# Get or create bucket
-DEFAULT_BUCKET="openclaw-backups-$(tr -dc 'a-z0-9' < /dev/urandom | head -c 8)"
-echo
-echo "Enter S3 bucket name for backups (or press Enter for: $DEFAULT_BUCKET):"
-read -r BACKUP_BUCKET
-BACKUP_BUCKET="${BACKUP_BUCKET:-$DEFAULT_BUCKET}"
-
-# Create bucket if it doesn't exist
-if ! aws s3 ls "s3://$BACKUP_BUCKET" &> /dev/null; then
-    echo "Creating bucket: $BACKUP_BUCKET"
-    if [[ "$(aws configure get region)" == "us-east-1" ]]; then
-        aws s3 mb "s3://$BACKUP_BUCKET"
-    else
-        aws s3 mb "s3://$BACKUP_BUCKET" --region "$(aws configure get region)"
-    fi
-    
-    # Enable versioning
-    aws s3api put-bucket-versioning \
-        --bucket "$BACKUP_BUCKET" \
-        --versioning-configuration Status=Enabled
-    
-    echo "[OK] Bucket created and versioning enabled"
-else
-    echo "[OK] Using existing bucket: $BACKUP_BUCKET"
+if ! git config user.name &>/dev/null; then
+    echo "Enter name for backup commits (e.g., OpenClaw Backup):"
+    read -r name
+    git config user.name "${name:-OpenClaw Backup}"
 fi
 
-# Create cron job
+echo "[OK] Git configured: $(git config user.name) <$(git config user.email)>"
+
+# Setup cron job
 echo
 echo "Setting up cron job for daily backups at 3:00 AM..."
-CRON_ENTRY="0 3 * * * cd $SCRIPT_DIR && AWS_BACKUP_BUCKET=$BACKUP_BUCKET bash backup.sh >> $SCRIPT_DIR/backup.log 2>&1"
 
-# Remove old entry if exists
-(crontab -l 2>/dev/null | grep -v "openclaw-backup" | grep -v "$SCRIPT_DIR") | crontab -
+# Remove old entries
+(crontab -l 2>/dev/null | grep -v "openclaw-backup" | grep -v "$SCRIPT_DIR") | crontab - 2>/dev/null || true
 
 # Add new entry
+CRON_ENTRY="0 3 * * * cd $SCRIPT_DIR && bash backup.sh >> $SCRIPT_DIR/backup.log 2>&1"
 (crontab -l 2>/dev/null; echo "$CRON_ENTRY") | crontab -
 
 echo "[OK] Cron job installed"
-echo "   Entry: $CRON_ENTRY"
-echo
 
-# Test backup
-echo "Run a test backup now? (y/n)"
-read -r response
-if [[ "$response" =~ ^[Yy]$ ]]; then
-    echo
-    export BACKUP_BUCKET
-    bash "$SCRIPT_DIR/backup.sh"
-fi
+# Initial commit
+echo
+echo "Performing initial commit..."
+git add -A
+git commit -m "Initial backup setup" || echo "(nothing to commit)"
 
 echo
 echo "=== Setup Complete ==="
 echo
-echo "Configuration saved:"
-echo "  Bucket: $BACKUP_BUCKET"
-echo "  Schedule: Daily at 3:00 AM"
-echo "  Log: $SCRIPT_DIR/backup.log"
+echo "Configuration:"
+echo "  - Archive location: $ARCHIVE_DIR"
+echo "  - GitHub repo: https://github.com/openclawpedro-coder/Daily-Backup.git"
+echo "  - Schedule: Daily at 3:00 AM"
+echo "  - Log: $SCRIPT_DIR/backup.log"
 echo
-echo "To check backup status:"
-echo "  tail -f $SCRIPT_DIR/backup.log"
+echo "To push to GitHub (run manually once):"
+echo "  cd $SCRIPT_DIR"
+echo "  git push -u origin main"
+echo
+echo "To verify cron job:"
+echo "  crontab -l"
+echo
+
+# Run test backup?
+echo "Run a test backup now? (y/n)"
+read -r response
+if [[ "$response" =~ ^[Yy]$ ]]; then
+    echo
+    bash "$SCRIPT_DIR/backup.sh"
+fi

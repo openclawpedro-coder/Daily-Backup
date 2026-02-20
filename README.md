@@ -1,57 +1,99 @@
-# Daily Backup for OpenClaw Workspace
+# Hybrid Backup for OpenClaw Workspace
 
-Automated daily backups of the OpenClaw workspace to AWS S3.
+Daily backups combining **local compressed archives** + **GitHub commits**.
 
-## What's Backed Up
+## How It Works
 
-- Full workspace directory: `~/.openclaw/workspace`
-- Includes: code, configs, memory files, documentation
-- Excludes: `.git/objects`, `node_modules`, logs, cache files
+| Method | Backups Up | Storage |
+|--------|-----------|---------|
+| **Local Archive** | Full workspace (code, configs, memory files) | `archives/` folder |
+| **GitHub** | Changes to backup scripts, logs, key configs | GitHub repo |
 
-## Prerequisites
+## What's Included
 
-- AWS CLI installed
-- AWS credentials configured (`aws configure`)
-- S3 bucket (created automatically by setup script)
+### Local Archives (.tar.gz)
+- Full workspace: `~/.openclaw/workspace`
+- Excludes: `node_modules`, logs, cache
+- Location: `backup/archives/`
+- Retention: 30 days (auto-cleanup)
 
-## Installation
+### GitHub Commits
+- Backup scripts & configuration
+- Log files
+- Archive manifests
+
+## Setup
 
 ```bash
-# Clone and enter the repo
-git clone https://github.com/openclawpedro-coder/Daily-Backup.git
-cd Daily-Backup
+cd ~/.openclaw/workspace/backup
 
-# Run setup
+# Run setup (installs cron, configures git)
 ./setup.sh
-```
 
-The setup script will:
-1. Check AWS credentials
-2. Create an S3 bucket (or use existing)
-3. Install the cron job for 3:00 AM daily
-4. Optionally run a test backup
+# Push to GitHub
+git push -u origin main
+```
 
 ## Manual Backup
 
 ```bash
+cd ~/.openclaw/workspace/backup
 ./backup.sh
 ```
 
 ## Restore
 
-To restore from a backup:
+### From Local Archive
 
 ```bash
-# List available backups
-aws s3 ls s3://YOUR-BUCKET/backups/ --recursive
+# List available archives
+ls -lah ~/.openclaw/workspace/backup/archives/
 
-# Download specific backup
-aws s3 cp s3://YOUR-BUCKET/backups/2024-01-15/openclaw-backup-HOST-20240115_030000.tar.gz ./
-
-# Extract to restore
-tar -xzf openclaw-backup-*.tar.gz -C ~/.openclaw
+# Extract latest backup
+cd ~/
+tar -xzf ~/.openclaw/workspace/backup/archives/openclaw-backup-*.tar.gz
 ```
 
-## Retention
+### From GitHub
 
-Backups older than 30 days are automatically removed. S3 versioning provides additional protection against accidental deletion.
+```bash
+git clone https://github.com/openclawpedro-coder/Daily-Backup.git
+cd Daily-Backup
+```
+
+## Architecture
+
+```
+Daily Backup Repo
+├── backup.sh       # Main backup script
+├── setup.sh        # Configuration script
+├── archives/       # Local tar.gz backups (gitignored)
+│   ├── openclaw-backup-HOST-20240220_030001.tar.gz
+│   ├── openclaw-backup-HOST-20240221_030002.tar.gz
+│   └── ...
+└── backup.log      # Execution log
+```
+
+## Schedule
+
+- **Frequency:** Daily at 3:00 AM (Africa/Johannesburg timezone)
+- **Cron job:** Check with `crontab -l`
+
+## Troubleshooting
+
+**Git push fails:**
+```bash
+cd ~/.openclaw/workspace/backup
+git push origin main
+# (Enter credentials if prompted)
+```
+
+**Check backup log:**
+```bash
+tail -f ~/.openclaw/workspace/backup/backup.log
+```
+
+**List local archives:**
+```bash
+ls -lah ~/.openclaw/workspace/backup/archives/
+```
