@@ -7,6 +7,12 @@
 
 set -euo pipefail
 
+# Load environment variables (for GitHub token)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    source "$SCRIPT_DIR/.env"
+fi
+
 # Configuration
 WORKSPACE_DIR="${HOME}/.openclaw/workspace"
 BACKUP_DIR="${WORKSPACE_DIR}/backup"
@@ -53,6 +59,20 @@ cd "$BACKUP_DIR"
 # Configure git if not already set
 git config user.email "backup@openclaw.local" 2>/dev/null || true
 git config user.name "OpenClaw Backup" 2>/dev/null || true
+
+# Configure GitHub authentication if token is available
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    # Remove token from remote URL if it was previously embedded
+    CURRENT_URL=$(git remote get-url origin 2>/dev/null || echo "")
+    if echo "$CURRENT_URL" | grep -q "@github.com"; then
+        CLEAN_URL=$(echo "$CURRENT_URL" | sed 's|https://[^@]*@|https://|')
+        git remote set-url origin "$CLEAN_URL"
+    fi
+    # Set up credential helper to use token
+    git config credential.helper 'store --file=.git/credentials'
+    echo "https://pedro-openclaw:${GITHUB_TOKEN}@github.com" > .git/credentials
+    chmod 600 .git/credentials
+fi
 
 # Add all changes
 git add -A
