@@ -1,0 +1,4 @@
+# Weekly Restore Test Report
+# Format: DATE | STATUS | ARCHIVE | DETAILS
+#
+# This file is updated by restore-test.sh when run weekly
